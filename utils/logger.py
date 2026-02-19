@@ -12,7 +12,7 @@ logger = logging.getLogger("truth.x")
 logger.setLevel(logging.DEBUG)
 
 _console_handler = logging.StreamHandler()
-_console_handler.setLevel(logging.INFO)
+_console_handler.setLevel(logging.WARNING)
 _console_handler.setFormatter(logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT))
 
 _file_handler = logging.FileHandler(LOG_FILE, encoding="utf-8")

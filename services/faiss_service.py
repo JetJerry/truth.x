@@ -4,11 +4,22 @@ import os
 import json
 import pickle
 import numpy as np
+import yaml
 from sentence_transformers import SentenceTransformer
 from typing import List, Dict, Any, Optional
 import logging
 
 logger = logging.getLogger("truth.x")
+
+# Project root = parent of services/
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+CONFIG_PATH = os.path.join(_PROJECT_ROOT, "config", "config.yaml")
+
+
+def _load_config() -> dict:
+    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
 
 
 def _normalize_l2(x: np.ndarray) -> np.ndarray:
@@ -25,21 +36,37 @@ class FAISSSearch:
     Uses numpy-based cosine similarity (inner product on L2-normalised vectors)
     which is equivalent to a FAISS IndexFlatIP but avoids the broken swig_ptr
     bindings in certain FAISS builds on Windows.
+
+    All settings are read from config/config.yaml under the 'retrieval' section.
     """
 
-    def __init__(self,
-                 articles_path: str = "data/articles.json",
-                 index_path: str = "data/embeddings.npy",
-                 metadata_path: str = "data/faiss_metadata.pkl",
-                 model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
+    def __init__(self) -> None:
+        cfg = _load_config()
+        retrieval_cfg = cfg.get("retrieval", {})
 
-        self.articles_path = articles_path
-        self.index_path = index_path
-        self.metadata_path = metadata_path
-        self.model_name = model_name
+        # Resolve all paths relative to project root so CWD doesn't matter
+        self.articles_path: str = os.path.join(
+            _PROJECT_ROOT, retrieval_cfg.get("articles_path", "data/articles.json")
+        )
+        # np.save() auto-appends .npy, so always use .npy extension
+        raw_index = retrieval_cfg.get("index_path", "data/faiss/embeddings.npy")
+        if not raw_index.endswith(".npy"):
+            raw_index += ".npy"
+        self.index_path: str = os.path.join(_PROJECT_ROOT, raw_index)
+        # Store metadata alongside the index
+        self.metadata_path: str = os.path.join(
+            os.path.dirname(self.index_path), "faiss_metadata.pkl"
+        )
+        self.model_name: str = retrieval_cfg.get("embedder_model", "sentence-transformers/all-MiniLM-L6-v2")
+        self.top_k: int = retrieval_cfg.get("top_k", 5)
 
-        logger.info(f"Loading sentence-transformer model '{model_name}'")
-        self.model = SentenceTransformer(model_name)
+        logger.info(
+            "FAISSSearch config: articles_path=%s, index_path=%s, model=%s, top_k=%d",
+            self.articles_path, self.index_path, self.model_name, self.top_k,
+        )
+
+        logger.info(f"Loading sentence-transformer model '{self.model_name}'")
+        self.model = SentenceTransformer(self.model_name)
 
         self.articles: List[Dict[str, Any]] = self._load_articles()
         self.embeddings: Optional[np.ndarray] = self._load_or_build_index()
@@ -123,8 +150,14 @@ class FAISSSearch:
 
         return self._build_embeddings(texts)
 
-    def search(self, query: str, k: int = 3) -> List[Dict[str, Any]]:
-        """Return the k most similar articles to the query."""
+    def search(self, query: str, k: int | None = None) -> List[Dict[str, Any]]:
+        """Return the k most similar articles to the query.
+
+        If k is not provided, uses the top_k value from config.yaml.
+        """
+        if k is None:
+            k = self.top_k
+
         if self.embeddings is None or len(self.articles) == 0:
             logger.warning("No embeddings available; cannot search")
             return []
