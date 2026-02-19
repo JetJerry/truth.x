@@ -65,12 +65,47 @@ app = FastAPI(
 async def analyze(
     video: Optional[UploadFile] = File(None),
     query: Optional[str] = Form(None),
+    document: Optional[UploadFile] = File(None),
 ) -> Dict[str, Any]:
-    """Analyze a video file for deepfakes and/or a text query for AI-generated
-    content and related fact-check articles."""
+    """Analyze a video file for deepfakes, a text query, or a document (.pdf,
+    .docx, .txt) for AI-generated content and related fact-check articles."""
+
+    # If a document is uploaded, extract its text and use it as the query
+    if document is not None:
+        from utils.document_reader import detect_format, read_document
+
+        fmt = detect_format(document.filename or "")
+        if fmt is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Unsupported document format. Upload a .pdf, .docx, or .txt file.",
+            )
+
+        tmp_doc = tempfile.NamedTemporaryFile(
+            delete=False, suffix=fmt, dir="data/processed",
+        )
+        try:
+            tmp_doc.write(await document.read())
+            tmp_doc.close()
+            doc_text = read_document(tmp_doc.name)
+            logger.info("Extracted %d characters from uploaded document '%s'", len(doc_text), document.filename)
+        except Exception as exc:
+            logger.exception("Document reading failed")
+            raise HTTPException(status_code=500, detail=f"Document reading error: {exc}") from exc
+        finally:
+            if os.path.exists(tmp_doc.name):
+                os.unlink(tmp_doc.name)
+
+        if not doc_text.strip():
+            raise HTTPException(status_code=400, detail="Uploaded document is empty.")
+
+        query = doc_text
 
     if video is None and query is None:
-        raise HTTPException(status_code=400, detail="Provide at least a video file or a text query.")
+        raise HTTPException(
+            status_code=400,
+            detail="Provide at least a video file, a text query, or a document.",
+        )
 
     cfg = _models["config"]
     video_result = None

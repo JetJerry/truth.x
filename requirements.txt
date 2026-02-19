@@ -29,6 +29,10 @@ colorama==0.4.6
 # FAISS - CPU version
 faiss-cpu==1.8.0
 
+# Document parsing
+PyPDF2==3.0.1
+python-docx==1.1.2
+
 # Audio processing
 librosa==0.10.2.post1
 soundfile==0.12.1

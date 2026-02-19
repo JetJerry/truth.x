@@ -3,6 +3,7 @@
 Usage examples:
     python main_pipeline.py --video path/to/video.mp4
     python main_pipeline.py --query "Some suspicious claim to fact-check"
+    python main_pipeline.py --text-file path/to/document.pdf
     python main_pipeline.py --video path/to/video.mp4 --query "Claim in the video"
 """
 
@@ -33,6 +34,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--video", type=str, default=None, help="Path to a video file for deepfake analysis")
     parser.add_argument("--query", type=str, default=None, help="Text query for AI-text detection and article search")
+    parser.add_argument("--text-file", type=str, default=None, help="Path to a document (.pdf, .docx, .txt) for AI-text detection")
     return parser.parse_args()
 
 
@@ -40,8 +42,20 @@ def main() -> None:
     load_dotenv()
     args = parse_args()
 
+    # If --text-file is provided, read the document and use its content as the query
+    text_file = getattr(args, "text_file", None)
+    if text_file:
+        from utils.document_reader import read_document
+        logger.info("Reading document: %s", text_file)
+        file_text = read_document(text_file)
+        if not file_text.strip():
+            logger.error("Document is empty: %s", text_file)
+            sys.exit(1)
+        logger.info("Extracted %d characters from document", len(file_text))
+        args.query = file_text
+
     if args.video is None and args.query is None:
-        logger.error("No input provided. Use --video and/or --query.")
+        logger.error("No input provided. Use --video, --query, and/or --text-file.")
         sys.exit(1)
 
     cfg = load_config()
