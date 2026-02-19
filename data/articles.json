@@ -1,0 +1,37 @@
+[
+  {
+    "id": 1,
+    "title": "Deepfake video of world leader giving fake speech debunked",
+    "content": "A viral video claiming to show a world leader announcing a surprise military withdrawal was identified as a deepfake by multiple forensic analysts. The video exhibited telltale signs including inconsistent lighting on the face, unnatural blinking patterns, and audio-visual sync issues. The original footage was traced to a press conference held six months earlier, with the lip movements digitally altered to match fabricated audio.",
+    "url": "https://www.factcheck.org/2024/03/deepfake-world-leader-speech",
+    "source": "FactCheck.org"
+  },
+  {
+    "id": 2,
+    "title": "AI-generated audio impersonating CEO used in fraud scheme",
+    "content": "Criminals used AI-cloned voice technology to impersonate the chief executive of a UK-based energy firm, convincing a senior manager to wire 220,000 euros to a Hungarian bank account. The synthetic voice replicated the CEO's slight German accent and speech cadence. Cybersecurity researchers later confirmed the audio was generated using a text-to-speech model fine-tuned on publicly available earnings call recordings.",
+    "url": "https://www.bbc.com/news/technology-ai-voice-cloning-fraud",
+    "source": "BBC News"
+  },
+  {
+    "id": 3,
+    "title": "Fabricated satellite imagery shared as evidence of military build-up",
+    "content": "Social media accounts circulated what they claimed were satellite images showing a large-scale military build-up near a disputed border region. Open-source intelligence analysts determined the images were AI-generated, noting repeated texture patterns in vegetation, impossibly uniform vehicle spacing, and metadata inconsistencies. The original generation prompt was later found on an image-synthesis forum.",
+    "url": "https://www.bellingcat.com/news/2024/05/fake-satellite-imagery-analysis",
+    "source": "Bellingcat"
+  },
+  {
+    "id": 4,
+    "title": "Viral health claim about miracle cancer cure is misinformation",
+    "content": "A widely shared article claimed that a common household spice could cure late-stage cancer within weeks, citing a non-existent study from Johns Hopkins University. The university confirmed no such study was conducted. Medical experts noted the article used AI-generated text with hallucinated citations and statistical figures. The claim has been repeatedly debunked by oncologists and peer-reviewed medical literature.",
+    "url": "https://www.snopes.com/fact-check/miracle-spice-cancer-cure",
+    "source": "Snopes"
+  },
+  {
+    "id": 5,
+    "title": "Manipulated election footage traced to coordinated disinformation campaign",
+    "content": "A video purporting to show ballot stuffing at a polling station during a national election was revealed to be a composite of real surveillance footage and digitally inserted actors. Forensic analysis found compression artefacts around the inserted figures, inconsistent shadow directions, and frame-rate mismatches between the background and foreground elements. The video was traced to a network of bot accounts that amplified it across multiple platforms within hours of posting.",
+    "url": "https://www.reuters.com/fact-check/election-ballot-stuffing-video-manipulated",
+    "source": "Reuters Fact Check"
+  }
+]

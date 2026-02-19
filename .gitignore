@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+data/processed/
+logs/
+*.bin
+.env
+hf_cache/
+ffmpeg/
+data/samples/
