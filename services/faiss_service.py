@@ -4,196 +4,150 @@ import os
 import json
 import pickle
 import numpy as np
-import faiss
 from sentence_transformers import SentenceTransformer
 from typing import List, Dict, Any, Optional
 import logging
 
 logger = logging.getLogger("truth.x")
 
+
+def _normalize_l2(x: np.ndarray) -> np.ndarray:
+    """L2-normalize rows in-place."""
+    norms = np.linalg.norm(x, axis=1, keepdims=True)
+    norms[norms == 0] = 1.0
+    x /= norms
+    return x
+
+
 class FAISSSearch:
-    def __init__(self, 
+    """Semantic similarity search using Sentence-Transformers embeddings.
+
+    Uses numpy-based cosine similarity (inner product on L2-normalised vectors)
+    which is equivalent to a FAISS IndexFlatIP but avoids the broken swig_ptr
+    bindings in certain FAISS builds on Windows.
+    """
+
+    def __init__(self,
                  articles_path: str = "data/articles.json",
-                 index_path: str = "data/faiss_index.bin",
+                 index_path: str = "data/embeddings.npy",
                  metadata_path: str = "data/faiss_metadata.pkl",
                  model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
-        
+
         self.articles_path = articles_path
         self.index_path = index_path
         self.metadata_path = metadata_path
         self.model_name = model_name
-        
-        # Load the sentence transformer model
+
         logger.info(f"Loading sentence-transformer model '{model_name}'")
         self.model = SentenceTransformer(model_name)
-        
-        # Load or build the FAISS index
-        self.index, self.articles = self._load_or_build_index()
-        
+
+        self.articles: List[Dict[str, Any]] = self._load_articles()
+        self.embeddings: Optional[np.ndarray] = self._load_or_build_index()
+
     def _load_articles(self) -> List[Dict[str, Any]]:
-        """Load articles from JSON file"""
         if not os.path.exists(self.articles_path):
             logger.warning(f"Articles file not found: {self.articles_path}")
-            # Return empty list if file doesn't exist
             return []
-        
+
         try:
             with open(self.articles_path, 'r', encoding='utf-8') as f:
                 articles = json.load(f)
-            
             logger.info(f"Loaded {len(articles)} articles from '{self.articles_path}'")
             return articles
         except Exception as e:
             logger.error(f"Error loading articles: {e}")
             return []
-    
+
     def _get_article_texts(self, articles: List[Dict[str, Any]]) -> List[str]:
-        """Extract text from articles for embedding"""
         texts = []
         for article in articles:
-            # Combine title and content for better search
             title = article.get('title', '')
             content = article.get('content', '')
-            # Also include any other text fields that might be useful
             summary = article.get('summary', '')
             description = article.get('description', '')
-            
-            # Combine all text fields
+
             text_parts = [title, summary, description, content]
             text = ' '.join([part for part in text_parts if part]).strip()
-            
-            if text:  # Only add if there's text
+
+            if text:
                 texts.append(text)
             else:
-                # If no text fields, use a placeholder
                 texts.append(f"Article {article.get('id', 'unknown')}")
-        
+
         return texts
-    
-    def _build_index(self, texts: List[str]) -> Optional[faiss.Index]:
-        """Build FAISS index from article texts"""
+
+    def _build_embeddings(self, texts: List[str]) -> Optional[np.ndarray]:
         if not texts:
-            logger.warning("No texts to index, creating empty index")
-            # Create empty index with correct dimension
-            return faiss.IndexFlatIP(384)  # all-MiniLM-L6-v2 dimension is 384
-        
-        logger.info(f"Encoding {len(texts)} articles for FAISS index")
-        
+            logger.warning("No texts to encode")
+            return None
+
+        logger.info(f"Encoding {len(texts)} articles")
+
+        embeddings = self.model.encode(texts, show_progress_bar=True)
+        embeddings = np.array(embeddings, dtype=np.float32, copy=True)
+        _normalize_l2(embeddings)
+
+        logger.info(f"Embeddings ready: shape={embeddings.shape}, dtype={embeddings.dtype}")
+
         try:
-            # Encode texts to embeddings
-            embeddings = self.model.encode(texts, show_progress_bar=True)
-            
-            # CRITICAL FIX: Ensure it's a numpy array with float32 dtype
-            if not isinstance(embeddings, np.ndarray):
-                embeddings = np.array(embeddings)
-            
-            embeddings = embeddings.astype('float32')
-            
-            # Verify shape
-            logger.info(f"Embeddings shape: {embeddings.shape}")
-            
-            # Normalize for cosine similarity (Inner Product)
-            # This expects a numpy array
-            faiss.normalize_L2(embeddings)
-            
-            # Create index
-            dimension = embeddings.shape[1]
-            index = faiss.IndexFlatIP(dimension)
-            index.add(embeddings)
-            
-            logger.info(f"Built FAISS index with {index.ntotal} vectors")
-            return index
-            
+            os.makedirs(os.path.dirname(self.index_path) or ".", exist_ok=True)
+            np.save(self.index_path, embeddings)
+
+            with open(self.metadata_path, 'wb') as f:
+                pickle.dump(texts, f)
+
+            logger.info(f"Saved embeddings to '{self.index_path}'")
         except Exception as e:
-            logger.error(f"Error building index: {e}")
-            import traceback
-            traceback.print_exc()
-            # Return empty index as fallback
-            return faiss.IndexFlatIP(384)
-    
-    def _load_or_build_index(self):
-        """Load existing index or build new one"""
-        articles = self._load_articles()
-        texts = self._get_article_texts(articles)
-        
-        # Try to load existing index
+            logger.warning(f"Failed to save embeddings: {e}")
+
+        return embeddings
+
+    def _load_or_build_index(self) -> Optional[np.ndarray]:
+        texts = self._get_article_texts(self.articles)
+
         if os.path.exists(self.index_path) and os.path.exists(self.metadata_path):
             try:
-                logger.info(f"Loading FAISS index from '{self.index_path}'")
-                index = faiss.read_index(self.index_path)
-                
+                logger.info(f"Loading embeddings from '{self.index_path}'")
+                embeddings = np.load(self.index_path)
+
                 with open(self.metadata_path, 'rb') as f:
                     saved_texts = pickle.load(f)
-                
-                # Check if index matches current articles
+
                 if saved_texts == texts:
-                    logger.info("FAISS index loaded successfully")
-                    return index, articles
+                    logger.info(f"Embeddings loaded ({embeddings.shape[0]} vectors)")
+                    return embeddings
                 else:
-                    logger.info("Articles changed, rebuilding index...")
+                    logger.info("Articles changed, rebuilding embeddings …")
             except Exception as e:
-                logger.warning(f"Failed to load index: {e}, rebuilding...")
-        
-        # Build new index
-        index = self._build_index(texts)
-        
-        # Save index and metadata if we have articles
-        if texts and index and index.ntotal > 0:
-            try:
-                # Ensure directory exists
-                os.makedirs(os.path.dirname(self.index_path), exist_ok=True)
-                
-                # Save index
-                faiss.write_index(index, self.index_path)
-                
-                # Save metadata
-                with open(self.metadata_path, 'wb') as f:
-                    pickle.dump(texts, f)
-                
-                logger.info(f"Saved FAISS index to '{self.index_path}'")
-            except Exception as e:
-                logger.warning(f"Failed to save index: {e}")
-        else:
-            logger.warning("No index to save")
-        
-        return index, articles
-    
+                logger.warning(f"Failed to load embeddings: {e}, rebuilding …")
+
+        return self._build_embeddings(texts)
+
     def search(self, query: str, k: int = 3) -> List[Dict[str, Any]]:
-        """Search for similar articles"""
-        if not hasattr(self, 'index') or self.index is None or self.index.ntotal == 0:
-            logger.warning("FAISS index is empty")
+        """Return the k most similar articles to the query."""
+        if self.embeddings is None or len(self.articles) == 0:
+            logger.warning("No embeddings available; cannot search")
             return []
-        
+
         try:
-            # Encode query
-            query_embedding = self.model.encode([query])
-            
-            # Ensure numpy array
-            if not isinstance(query_embedding, np.ndarray):
-                query_embedding = np.array(query_embedding)
-            
-            query_embedding = query_embedding.astype('float32')
-            
-            # Normalize query
-            faiss.normalize_L2(query_embedding)
-            
-            # Search
-            k = min(k, self.index.ntotal)
-            if k == 0:
-                return []
-                
-            scores, indices = self.index.search(query_embedding, k)
-            
-            # Format results
+            query_vec = self.model.encode([query])
+            query_vec = np.array(query_vec, dtype=np.float32, copy=True)
+            _normalize_l2(query_vec)
+
+            scores = (self.embeddings @ query_vec.T).squeeze()
+
+            k = min(k, len(self.articles))
+            top_indices = np.argsort(scores)[::-1][:k]
+
             results = []
-            for i, idx in enumerate(indices[0]):
-                if 0 <= idx < len(self.articles):
-                    article = self.articles[idx].copy()
-                    article['similarity_score'] = float(scores[0][i])
-                    results.append(article)
-            
+            for idx in top_indices:
+                article = self.articles[idx].copy()
+                article['similarity_score'] = round(float(scores[idx]), 4)
+                results.append(article)
+
+            logger.info(f"Search returned {len(results)} results (best={results[0]['similarity_score']:.4f})")
             return results
-            
+
         except Exception as e:
             logger.error(f"Error during search: {e}")
             import traceback

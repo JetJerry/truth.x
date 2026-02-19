@@ -66,7 +66,7 @@ class TestDirectPipeline:
         from services.faiss_service import FAISSSearch
 
         searcher = FAISSSearch()
-        results = searcher.search(SAMPLE_QUERY, top_k=3)
+        results = searcher.search(SAMPLE_QUERY, k=3)
 
         print("\n[FAISS Search Results]")
         print(json.dumps(results, indent=2, default=str))
